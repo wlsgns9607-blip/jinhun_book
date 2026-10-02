@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "db": "python db.py",
+    "start": "python db.py",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

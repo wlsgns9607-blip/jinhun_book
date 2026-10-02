@@ -55,21 +55,31 @@ function buildDefaultState(): HouseholdState {
   };
 }
 
-function getUserStorageKey(userId: string) {
-  return `household-budget-user-data-${userId}`;
+function hasData(st: HouseholdState): boolean {
+  if (!st) return false;
+  for (const k of st.assetKeys || []) {
+    if (st.assets && st.assets[k] && st.assets[k].value !== 0) return true;
+  }
+  for (const m of MONTHS) {
+    if (st.expenses && st.expenses[m]) {
+      for (const c of st.expenseCategories || []) {
+        if (st.expenses[m][c] && st.expenses[m][c].value !== 0) return true;
+      }
+    }
+    if (st.income && st.income[m]) {
+      for (const c of st.incomeCategories || []) {
+        if (st.income[m][c] && st.income[m][c].value !== 0) return true;
+      }
+    }
+  }
+  return false;
 }
 
-function loadUserState(userId: string): HouseholdState {
-  try {
-    let raw = localStorage.getItem(getUserStorageKey(userId));
-    if (!raw && userId === 'default') {
-      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    }
-    if (!raw) return buildDefaultState();
-    const parsed = JSON.parse(raw);
-    const base = buildDefaultState();
+function sanitizeHouseholdState(parsed: any): HouseholdState {
+  const base = buildDefaultState();
+  if (!parsed || typeof parsed !== 'object') return base;
 
-    // 1. 자산 목록 복구
+  try {
     let keys = parsed.assetKeys;
     if (!Array.isArray(keys)) {
       keys = parsed.assets ? Object.keys(parsed.assets) : DEFAULT_ASSET_KEYS;
@@ -85,15 +95,17 @@ function loadUserState(userId: string): HouseholdState {
     base.assetKeys = cleanKeys.length > 0 ? cleanKeys : [...DEFAULT_ASSET_KEYS];
     base.assets = {};
     base.assetKeys.forEach(k => {
-      if (parsed.assets && parsed.assets[k]) {
-        base.assets[k] = field(parsed.assets[k].value !== undefined ? parsed.assets[k].value : parsed.assets[k].raw);
-        if (parsed.assets[k].raw !== undefined) base.assets[k].raw = String(parsed.assets[k].raw);
+      if (parsed.assets && parsed.assets[k] !== undefined) {
+        const item = parsed.assets[k];
+        const val = typeof item === 'object' && item !== null ? (item.value !== undefined ? item.value : item.raw) : item;
+        const raw = typeof item === 'object' && item !== null && item.raw !== undefined ? String(item.raw) : String(val);
+        base.assets[k] = field(val);
+        base.assets[k].raw = raw;
       } else {
         base.assets[k] = field(0);
       }
     });
 
-    // 2. 수입 카테고리 & 입금 은행 목록 복구
     if (Array.isArray(parsed.incomeCategories) && parsed.incomeCategories.length > 0) {
       base.incomeCategories = parsed.incomeCategories;
     }
@@ -101,23 +113,34 @@ function loadUserState(userId: string): HouseholdState {
       base.incomeDestinations = { ...base.incomeDestinations, ...parsed.incomeDestinations };
     }
 
-    // 3. 지출 카테고리 목록 복구
     if (Array.isArray(parsed.expenseCategories) && parsed.expenseCategories.length > 0) {
       base.expenseCategories = parsed.expenseCategories;
     }
 
-    // 4. 월별 데이터 복구
     MONTHS.forEach(m => {
+      base.expenses[m] = base.expenses[m] || {};
       base.expenseCategories.forEach(c => {
-        if (parsed.expenses && parsed.expenses[m] && parsed.expenses[m][c]) {
-          base.expenses[m][c] = field(parsed.expenses[m][c].value !== undefined ? parsed.expenses[m][c].value : parsed.expenses[m][c].raw);
-          if (parsed.expenses[m][c].raw !== undefined) base.expenses[m][c].raw = String(parsed.expenses[m][c].raw);
+        if (parsed.expenses && parsed.expenses[m] && parsed.expenses[m][c] !== undefined) {
+          const item = parsed.expenses[m][c];
+          const val = typeof item === 'object' && item !== null ? (item.value !== undefined ? item.value : item.raw) : item;
+          const raw = typeof item === 'object' && item !== null && item.raw !== undefined ? String(item.raw) : String(val);
+          base.expenses[m][c] = field(val);
+          base.expenses[m][c].raw = raw;
+        } else {
+          base.expenses[m][c] = field(0);
         }
       });
+
+      base.income[m] = base.income[m] || {};
       base.incomeCategories.forEach(c => {
-        if (parsed.income && parsed.income[m] && parsed.income[m][c]) {
-          base.income[m][c] = field(parsed.income[m][c].value !== undefined ? parsed.income[m][c].value : parsed.income[m][c].raw);
-          if (parsed.income[m][c].raw !== undefined) base.income[m][c].raw = String(parsed.income[m][c].raw);
+        if (parsed.income && parsed.income[m] && parsed.income[m][c] !== undefined) {
+          const item = parsed.income[m][c];
+          const val = typeof item === 'object' && item !== null ? (item.value !== undefined ? item.value : item.raw) : item;
+          const raw = typeof item === 'object' && item !== null && item.raw !== undefined ? String(item.raw) : String(val);
+          base.income[m][c] = field(val);
+          base.income[m][c].raw = raw;
+        } else {
+          base.income[m][c] = field(0);
         }
       });
     });
@@ -126,6 +149,23 @@ function loadUserState(userId: string): HouseholdState {
       base.activeMonth = parsed.activeMonth;
     }
     return base;
+  } catch (e) {
+    return base;
+  }
+}
+
+function getUserStorageKey(userId: string) {
+  return `household-budget-user-data-${userId}`;
+}
+
+function loadUserState(userId: string): HouseholdState {
+  try {
+    let raw = localStorage.getItem(getUserStorageKey(userId));
+    if (!raw && userId === 'default') {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    }
+    if (!raw) return buildDefaultState();
+    return sanitizeHouseholdState(JSON.parse(raw));
   } catch (e) {
     return buildDefaultState();
   }
@@ -141,6 +181,99 @@ function simpleHash(str: string): string {
   return `h_${hash.toString(36)}_${str.length}`;
 }
 
+const DB_API_URL = 'http://localhost:5000/api';
+
+// 1. 브라우저 내장 데이터베이스 (IndexedDB) 초기화 & 동기화
+function openIndexedDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('HouseholdBudgetDB', 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains('users')) {
+        db.createObjectStore('users', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('user_data')) {
+        db.createObjectStore('user_data', { keyPath: 'userId' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveIndexedDBUserData(userId: string, state: HouseholdState) {
+  try {
+    const db = await openIndexedDB();
+    const tx = db.transaction('user_data', 'readwrite');
+    const store = tx.objectStore('user_data');
+    store.put({ userId, state, updatedAt: Date.now() });
+  } catch (e) {}
+}
+
+async function loadIndexedDBUserData(userId: string): Promise<HouseholdState | null> {
+  try {
+    const db = await openIndexedDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('user_data', 'readonly');
+      const store = tx.objectStore('user_data');
+      const req = store.get(userId);
+      req.onsuccess = () => {
+        if (req.result && req.result.state) {
+          resolve(req.result.state as HouseholdState);
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function saveIndexedDBUsers(users: UserAccount[]) {
+  try {
+    const db = await openIndexedDB();
+    const tx = db.transaction('users', 'readwrite');
+    const store = tx.objectStore('users');
+    users.forEach(u => store.put(u));
+  } catch (e) {}
+}
+
+// 2. 파이썬 SQLite DB (db.py) 백엔드 API 연동
+async function fetchDbUserState(userId: string): Promise<HouseholdState | null> {
+  try {
+    const res = await fetch(`${DB_API_URL}/load?userId=${encodeURIComponent(userId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.state) {
+        return data.state as HouseholdState;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function saveDbUserState(userId: string, state: HouseholdState) {
+  try {
+    await fetch(`${DB_API_URL}/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, state })
+    });
+  } catch (e) {}
+}
+
+async function saveDbUsers(users: UserAccount[]) {
+  try {
+    await fetch(`${DB_API_URL}/users/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users })
+    });
+  } catch (e) {}
+}
+
 function loadUsers(): UserAccount[] {
   try {
     const raw = localStorage.getItem(USERS_KEY);
@@ -154,6 +287,8 @@ function saveUsers(users: UserAccount[]) {
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   } catch (e) {}
+  saveIndexedDBUsers(users);
+  saveDbUsers(users);
 }
 
 function evaluateFormula(input: string): number | null {
@@ -285,20 +420,74 @@ export default function App() {
     catch (e) { return 'light'; }
   });
 
-  // 유저 변경 시 가계부 데이터 로드
+  const isLoadedRef = useRef<boolean>(false);
+  const activeUserIdRef = useRef<string | null>(null);
+
+  // 유저 변경 시 3-Layer DB에서 데이터 안전 복구 (Race condition 0원 덮어쓰기 완전 방지)
   useEffect(() => {
+    let isCancelled = false;
+
     if (currentUser) {
-      setState(loadUserState(currentUser.id));
+      const currentId = currentUser.id;
+      isLoadedRef.current = false;
+      activeUserIdRef.current = currentId;
+
+      async function restoreUserData() {
+        // 1단계: localStorage 조회
+        let targetState = loadUserState(currentId);
+
+        // 2단계: IndexedDB 조회
+        try {
+          const idbRaw = await loadIndexedDBUserData(currentId);
+          if (idbRaw) {
+            const sanitizedIdb = sanitizeHouseholdState(idbRaw);
+            if (hasData(sanitizedIdb) || !hasData(targetState)) {
+              targetState = sanitizedIdb;
+            }
+          }
+        } catch (e) {}
+
+        // 3단계: 파이썬 SQLite db.py 서버 조회
+        try {
+          const dbRaw = await fetchDbUserState(currentId);
+          if (dbRaw) {
+            const sanitizedDb = sanitizeHouseholdState(dbRaw);
+            if (hasData(sanitizedDb) || !hasData(targetState)) {
+              targetState = sanitizedDb;
+            }
+          }
+        } catch (e) {}
+
+        if (!isCancelled) {
+          setState(targetState);
+          // 로딩 완료 후 비로소 저장 허용
+          isLoadedRef.current = true;
+        }
+      }
+
+      restoreUserData();
+    } else {
+      isLoadedRef.current = false;
+      activeUserIdRef.current = null;
     }
+
+    return () => {
+      isCancelled = true;
+    };
   }, [currentUser]);
 
-  // 가계부 데이터 자동 저장
+  // 가계부 데이터 자동 저장 (데이터 로딩 완료 후, 사용자가 수정한 상태만 안전 저장)
   useEffect(() => {
-    if (currentUser) {
-      try {
-        localStorage.setItem(getUserStorageKey(currentUser.id), JSON.stringify(state));
-      } catch (e) {}
+    if (!currentUser || !isLoadedRef.current || activeUserIdRef.current !== currentUser.id) {
+      return;
     }
+
+    try {
+      localStorage.setItem(getUserStorageKey(currentUser.id), JSON.stringify(state));
+    } catch (e) {}
+
+    saveIndexedDBUserData(currentUser.id, state);
+    saveDbUserState(currentUser.id, state);
   }, [state, currentUser]);
 
   // 테마 적용
@@ -748,6 +937,20 @@ export default function App() {
     );
   }
 
+  const [saveStatusMsg, setSaveStatusMsg] = useState('');
+
+  const handleManualSave = () => {
+    if (!currentUser) return;
+    try {
+      localStorage.setItem(getUserStorageKey(currentUser.id), JSON.stringify(state));
+    } catch (e) {}
+    saveIndexedDBUserData(currentUser.id, state);
+    saveDbUserState(currentUser.id, state);
+
+    setSaveStatusMsg('✅ 가계부 DB 저장 완료!');
+    setTimeout(() => setSaveStatusMsg(''), 2500);
+  };
+
   return (
     <div className="page">
       {/* Header */}
@@ -760,10 +963,15 @@ export default function App() {
               <span className="user-icon">👤</span>
               <strong className="user-name">{currentUser.name}</strong>
               <span className="user-birth">({currentUser.birthDate})</span>
+              <span className="db-sync-badge" title="IndexedDB + SQLite db.py 이중 데이터베이스 자동 저장 중" style={{ marginLeft: '8px', fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>💾 DB 자동 영구 저장 중</span>
             </div>
           </div>
         </div>
         <div className="header-actions">
+          <button className="text-btn save-db-btn" onClick={handleManualSave} type="button" style={{ background: '#10b981', color: '#ffffff', fontWeight: 700, padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', boxShadow: '0 2px 8px rgba(16,185,129,0.3)' }}>
+            💾 가계부 DB에 저장하기
+          </button>
+          {saveStatusMsg && <span className="save-status-toast" style={{ color: '#10b981', fontWeight: 700, fontSize: '13px', marginLeft: '4px' }}>{saveStatusMsg}</span>}
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 전환" title="테마 전환">
             {theme === 'dark' ? '☀' : '🌙'}
           </button>

@@ -7,7 +7,7 @@ const LEGACY_STORAGE_KEY = 'household-budget-v1';
 const THEME_KEY = 'household-budget-theme';
 
 const DEFAULT_ASSET_KEYS = ['토스', '카카오뱅크', 'KB국민은행', '농협', 'IBK기업은행', '신한은행'];
-const MONTHS = ['9월', '10월', '11월', '12월', '1월', '2월'];
+const MONTHS = ['10월', '11월', '12월', '1월', '2월', '3월'];
 const DEFAULT_EXPENSE_CATEGORIES = ['식비', '교통비', '월세', '관리비', '통신비', '생활용품', '문화/취미', '카드결제', '기타'];
 const DEFAULT_INCOME_CATEGORIES = ['월급', '훈련/지원금', '계좌이체', '용돈', '부수입', '기타'];
 const DEFAULT_INCOME_DESTINATIONS: Record<string, string> = {
@@ -207,7 +207,7 @@ async function saveIndexedDBUserData(userId: string, state: HouseholdState) {
     const tx = db.transaction('user_data', 'readwrite');
     const store = tx.objectStore('user_data');
     store.put({ userId, state, updatedAt: Date.now() });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 async function loadIndexedDBUserData(userId: string): Promise<HouseholdState | null> {
@@ -237,7 +237,7 @@ async function saveIndexedDBUsers(users: UserAccount[]) {
     const tx = db.transaction('users', 'readwrite');
     const store = tx.objectStore('users');
     users.forEach(u => store.put(u));
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // 2. 파이썬 SQLite DB (db.py) 백엔드 API 연동
@@ -250,7 +250,7 @@ async function fetchDbUserState(userId: string): Promise<HouseholdState | null> 
         return data.state as HouseholdState;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
   return null;
 }
 
@@ -261,7 +261,7 @@ async function saveDbUserState(userId: string, state: HouseholdState) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, state })
     });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 async function saveDbUsers(users: UserAccount[]) {
@@ -271,7 +271,7 @@ async function saveDbUsers(users: UserAccount[]) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ users })
     });
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function loadUsers(): UserAccount[] {
@@ -286,7 +286,7 @@ function loadUsers(): UserAccount[] {
 function saveUsers(users: UserAccount[]) {
   try {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } catch (e) {}
+  } catch (e) { }
   saveIndexedDBUsers(users);
   saveDbUsers(users);
 }
@@ -445,7 +445,7 @@ export default function App() {
               targetState = sanitizedIdb;
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         // 3단계: 파이썬 SQLite db.py 서버 조회
         try {
@@ -456,7 +456,7 @@ export default function App() {
               targetState = sanitizedDb;
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         if (!isCancelled) {
           setState(targetState);
@@ -484,7 +484,7 @@ export default function App() {
 
     try {
       localStorage.setItem(getUserStorageKey(currentUser.id), JSON.stringify(state));
-    } catch (e) {}
+    } catch (e) { }
 
     saveIndexedDBUserData(currentUser.id, state);
     saveDbUserState(currentUser.id, state);
@@ -494,12 +494,30 @@ export default function App() {
   useEffect(() => {
     if (theme) {
       document.documentElement.setAttribute('data-theme', theme);
-      try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+      try { localStorage.setItem(THEME_KEY, theme); } catch (e) { }
     }
   }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  const handlePrevMonth = () => {
+    const currentIndex = MONTHS.indexOf(state.activeMonth);
+    if (currentIndex > 0) {
+      setState(prev => ({ ...prev, activeMonth: MONTHS[currentIndex - 1] }));
+    } else {
+      setState(prev => ({ ...prev, activeMonth: MONTHS[MONTHS.length - 1] }));
+    }
+  };
+
+  const handleNextMonth = () => {
+    const currentIndex = MONTHS.indexOf(state.activeMonth);
+    if (currentIndex >= 0 && currentIndex < MONTHS.length - 1) {
+      setState(prev => ({ ...prev, activeMonth: MONTHS[currentIndex + 1] }));
+    } else {
+      setState(prev => ({ ...prev, activeMonth: MONTHS[0] }));
+    }
   };
 
   // 로그인/가입 처리
@@ -943,7 +961,7 @@ export default function App() {
     if (!currentUser) return;
     try {
       localStorage.setItem(getUserStorageKey(currentUser.id), JSON.stringify(state));
-    } catch (e) {}
+    } catch (e) { }
     saveIndexedDBUserData(currentUser.id, state);
     saveDbUserState(currentUser.id, state);
 
@@ -987,22 +1005,21 @@ export default function App() {
         <div className="panel-head">
           <div className="panel-head-left">
             <h2 className="panel-title asset-title">내 자산 (은행 / 계좌)</h2>
-            <span className="panel-subtitle">은행/자산을 자유롭게 추가하고 관리하세요</span>
+            <span className="panel-subtitle">은행/자산별 기초 잔액 및 {state.activeMonth} 총 순자산을 한눈에 확인하세요</span>
           </div>
           <button className="sub-btn asset-btn" type="button" onClick={handleAddAsset}>+ 자산/은행 추가</button>
         </div>
         <div className="asset-grid">
           {state.assetKeys.map(key => {
             const incomeAdd = getAssetIncome(key, state.activeMonth);
+            const totalNetAsset = getAssetTotalValue(key, state.activeMonth);
             return (
               <div className="asset-card" key={key}>
                 <div className="asset-card-header">
-                  <label title={key} className="asset-label-bold">{key}</label>
-                  {incomeAdd > 0 && (
-                    <span className="dest-badge auto-badge">
-                      +입금 {formatWon(incomeAdd)}
-                    </span>
-                  )}
+                  <div className="asset-card-title-wrap">
+                    <span className="bank-icon-emoji">🏦</span>
+                    <label title={key} className="asset-label-bold">{key}</label>
+                  </div>
                   <button
                     className="asset-delete-btn"
                     type="button"
@@ -1012,15 +1029,28 @@ export default function App() {
                     &minus;
                   </button>
                 </div>
-                <MoneyInput
-                  fieldData={state.assets[key] || field(0)}
-                  onChange={(newVal) => handleAssetChange(key, newVal)}
-                />
-                {incomeAdd > 0 && (
-                  <div className="asset-sum-hint">
-                    합계 {formatWon(getAssetTotalValue(key, state.activeMonth))}
+                
+                <div className="asset-card-body">
+                  <span className="asset-field-label">기초 잔액</span>
+                  <MoneyInput
+                    fieldData={state.assets[key] || field(0)}
+                    onChange={(newVal) => handleAssetChange(key, newVal)}
+                  />
+                </div>
+
+                <div className="asset-net-box">
+                  <div className="asset-net-head">
+                    <span className="net-label-title">총 순자산 ({state.activeMonth})</span>
+                    {incomeAdd > 0 && (
+                      <span className="dest-badge auto-badge">
+                        +{formatWon(incomeAdd)} 입금
+                      </span>
+                    )}
                   </div>
-                )}
+                  <div className="asset-net-val">
+                    {formatWonBig(totalNetAsset)}
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -1034,19 +1064,39 @@ export default function App() {
       {/* Month Ledger Section */}
       <section className="panel">
         <div className="panel-head">
-          <h2 className="panel-title">월별 내역</h2>
-          <span className="panel-subtitle">원하는 월을 선택해 수입/지출을 기록하세요</span>
+          <h2 className="panel-title">월별 내역 ({state.activeMonth})</h2>
+          <span className="panel-subtitle">화살표(◀ ▶) 또는 탭을 이용해 월을 손쉽게 전환하세요</span>
         </div>
-        <div className="month-tabs">
-          {MONTHS.map(m => (
-            <button
-              key={m}
-              className={`month-tab ${m === state.activeMonth ? 'active' : ''}`}
-              onClick={() => setState(prev => ({ ...prev, activeMonth: m }))}
-            >
-              {m}
-            </button>
-          ))}
+
+        {/* 월별 화살표 넘김 내비게이터 */}
+        <div className="month-navigator">
+          <button
+            type="button"
+            className="month-nav-btn prev-btn"
+            onClick={handlePrevMonth}
+            title="이전 달로 이동"
+          >
+            ◀ 이전 달
+          </button>
+          <div className="month-tabs">
+            {MONTHS.map(m => (
+              <button
+                key={m}
+                className={`month-tab ${m === state.activeMonth ? 'active' : ''}`}
+                onClick={() => setState(prev => ({ ...prev, activeMonth: m }))}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="month-nav-btn next-btn"
+            onClick={handleNextMonth}
+            title="다음 달로 이동"
+          >
+            다음 달 ▶
+          </button>
         </div>
 
         {/* Income Ledger */}
@@ -1059,11 +1109,11 @@ export default function App() {
           </button>
         </div>
         <div className="ledger">
-          <div className="ledger-head">
-            <span>입금 항목</span>
-            <span>입금 대상 은행</span>
-            <span>금액</span>
-            <span style={{ width: '28px', textAlign: 'center' }}>삭제</span>
+          <div className="ledger-head income-ledger-head">
+            <span className="col-item">입금 항목</span>
+            <span className="col-bank">입금 대상 은행</span>
+            <span className="col-amount">금액</span>
+            <span className="col-del">삭제</span>
           </div>
           {state.incomeCategories.map(cat => {
             const currentDest = state.incomeDestinations[cat] || state.assetKeys[0] || '';
@@ -1072,7 +1122,7 @@ export default function App() {
                 <div className="cat-label-wrap">
                   <span className="cat-label">{cat}</span>
                 </div>
-                
+
                 {/* 입금 대상 은행 드롭다운 */}
                 <div className="bank-select-wrap">
                   <select
@@ -1121,14 +1171,16 @@ export default function App() {
           </button>
         </div>
         <div className="ledger">
-          <div className="ledger-head">
-            <span>지출 항목</span>
-            <span>금액</span>
-            <span style={{ width: '28px', textAlign: 'center' }}>삭제</span>
+          <div className="ledger-head expense-ledger-head">
+            <span className="col-item">지출 항목</span>
+            <span className="col-amount">금액</span>
+            <span className="col-del">삭제</span>
           </div>
           {state.expenseCategories.map(cat => (
             <div className="ledger-row expense-ledger-row" key={cat}>
-              <div className="cat-label">{cat}</div>
+              <div className="cat-label-wrap">
+                <span className="cat-label">{cat}</span>
+              </div>
               <MoneyInput
                 fieldData={state.expenses[state.activeMonth] ? state.expenses[state.activeMonth][cat] : field(0)}
                 onChange={(newVal) => handleExpenseChange(cat, newVal)}
@@ -1159,11 +1211,11 @@ export default function App() {
             <span className="positive">{formatWonBig(totalAssets)}</span>
           </div>
           <div className="summary-row">
-            <span>전체 수입 (9월–2월 누적)</span>
+            <span>전체 수입 (10월–3월 누적)</span>
             <span className="positive">{formatWonBig(totalIncomeAllMonths)}</span>
           </div>
           <div className="summary-row">
-            <span>전체 지출 (9월–2월 누적)</span>
+            <span>전체 지출 (10월–3월 누적)</span>
             <span className="negative">{formatWonBig(totalExpenseAllMonths)}</span>
           </div>
           <div className="summary-row summary-row-main">

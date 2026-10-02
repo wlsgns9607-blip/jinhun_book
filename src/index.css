@@ -207,8 +207,8 @@ body {
 /* Asset Section */
 .asset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
   margin-bottom: 16px;
 }
 
@@ -216,10 +216,10 @@ body {
   background: var(--surface-alt);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -234,9 +234,19 @@ body {
   justify-content: space-between;
 }
 
+.asset-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bank-icon-emoji {
+  font-size: 16px;
+}
+
 .asset-card-header label {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -249,7 +259,7 @@ body {
   color: var(--ink-muted);
   font-size: 18px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 2px 6px;
   border-radius: 4px;
   line-height: 1;
 }
@@ -258,28 +268,92 @@ body {
   background: var(--expense-soft);
 }
 
-.asset-sum-hint {
-  font-size: 12px;
-  color: var(--accent);
-  font-weight: 500;
-  text-align: right;
-  font-family: var(--font-mono);
+.asset-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-/* Month Tabs */
+.asset-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-sub);
+}
+
+/* 은행별 총 순자산 하단 박스 */
+.asset-net-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.asset-net-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.net-label-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-sub);
+}
+
+.asset-net-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: -0.3px;
+  text-align: right;
+}
+
+/* Month Navigator & Tabs */
+.month-navigator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.month-nav-btn {
+  background: var(--surface-alt);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.month-nav-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .month-tabs {
   display: flex;
   gap: 6px;
+  flex: 1;
   overflow-x: auto;
-  padding-bottom: 8px;
-  margin-bottom: 16px;
   scrollbar-width: thin;
 }
 
 .month-tab {
   flex: 1;
-  min-width: 60px;
-  padding: 10px 4px;
+  min-width: 55px;
+  padding: 9px 4px;
   background: var(--surface-alt);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -303,7 +377,7 @@ body {
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
 }
 
-/* Ledger (Income & Expense Rows) */
+/* Ledger (Income & Expense Rows) 정렬 최적화 */
 .ledger {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -313,22 +387,60 @@ body {
 
 .ledger-head {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   background: var(--surface-alt);
-  padding: 8px 16px;
+  padding: 10px 16px;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-muted);
+  font-weight: 700;
+  color: var(--ink-sub);
   border-bottom: 1px solid var(--line);
+}
+
+.income-ledger-head {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 140px 170px 36px;
+  gap: 12px;
+}
+
+.expense-ledger-head {
+  display: grid;
+  grid-template-columns: 1fr 170px 36px;
+  gap: 12px;
+}
+
+.col-item {
+  text-align: left;
+}
+
+.col-bank {
+  text-align: left;
+}
+
+.col-amount {
+  text-align: right;
+  padding-right: 8px;
+}
+
+.col-del {
+  text-align: center;
 }
 
 .ledger-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px 8px 16px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--line);
   gap: 12px;
+}
+
+.income-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 140px 170px 36px;
+}
+
+.expense-ledger-row {
+  display: grid;
+  grid-template-columns: 1fr 170px 36px;
 }
 
 .ledger-row:last-child {

@@ -18,6 +18,17 @@ const DEFAULT_INCOME_DESTINATIONS: Record<string, string> = {
   '부수입': '농협',
   '기타': '토스'
 };
+const DEFAULT_EXPENSE_DESTINATIONS: Record<string, string> = {
+  '식비': '토스',
+  '교통비': '토스',
+  '월세': 'KB국민은행',
+  '관리비': 'KB국민은행',
+  '통신비': '토스',
+  '생활용품': '토스',
+  '문화/취미': '토스',
+  '카드결제': 'KB국민은행',
+  '기타': '토스'
+};
 
 function field(value: any): FieldData {
   const num = Number(value);
@@ -33,6 +44,7 @@ function buildDefaultState(): HouseholdState {
   const expenseCategories = [...DEFAULT_EXPENSE_CATEGORIES];
   const incomeCategories = [...DEFAULT_INCOME_CATEGORIES];
   const incomeDestinations: Record<string, string> = { ...DEFAULT_INCOME_DESTINATIONS };
+  const expenseDestinations: Record<string, string> = { ...DEFAULT_EXPENSE_DESTINATIONS };
 
   const expenses: Record<string, Record<string, FieldData>> = {};
   const income: Record<string, Record<string, FieldData>> = {};
@@ -49,6 +61,7 @@ function buildDefaultState(): HouseholdState {
     incomeCategories,
     incomeDestinations,
     expenseCategories,
+    expenseDestinations,
     expenses,
     income,
     activeMonth: MONTHS[0]
@@ -115,6 +128,9 @@ function sanitizeHouseholdState(parsed: any): HouseholdState {
 
     if (Array.isArray(parsed.expenseCategories) && parsed.expenseCategories.length > 0) {
       base.expenseCategories = parsed.expenseCategories;
+    }
+    if (parsed.expenseDestinations && typeof parsed.expenseDestinations === 'object') {
+      base.expenseDestinations = { ...base.expenseDestinations, ...parsed.expenseDestinations };
     }
 
     MONTHS.forEach(m => {
@@ -618,10 +634,29 @@ export default function App() {
     return sum;
   }, [state.income, state.incomeCategories, state.incomeDestinations, state.assetKeys]);
 
+  // 특정 자산(은행)에서 나가는 출금(지출) 합계 계산
+  const expenseSumByAccount = useCallback((month: string, accountName: string) => {
+    let sum = 0;
+    const monthExp = state.expenses[month] || {};
+    const dests = state.expenseDestinations || {};
+    state.expenseCategories.forEach(cat => {
+      const dest = dests[cat] || state.assetKeys[0] || '';
+      if (dest === accountName && monthExp[cat]) {
+        sum += monthExp[cat].value;
+      }
+    });
+    return sum;
+  }, [state.expenses, state.expenseCategories, state.expenseDestinations, state.assetKeys]);
+
   const getAssetIncome = useCallback((key: string, month?: string) => {
     const m = month || state.activeMonth;
     return incomeSumByAccount(m, key);
   }, [state.activeMonth, incomeSumByAccount]);
+
+  const getAssetExpense = useCallback((key: string, month?: string) => {
+    const m = month || state.activeMonth;
+    return expenseSumByAccount(m, key);
+  }, [state.activeMonth, expenseSumByAccount]);
 
   const getAssetTotalValue = useCallback((key: string, month?: string) => {
     const baseVal = state.assets[key] ? state.assets[key].value : 0;
@@ -796,6 +831,16 @@ export default function App() {
     }));
   };
 
+  const handleExpenseDestinationChange = (cat: string, newBank: string) => {
+    setState(prev => ({
+      ...prev,
+      expenseDestinations: {
+        ...(prev.expenseDestinations || {}),
+        [cat]: newBank
+      }
+    }));
+  };
+
   // 지출 카테고리 관리
   const handleAddExpenseCategory = () => {
     const name = prompt('추가할 지출 항목 이름을 입력하세요:\n예: 쇼핑, 외식비, 병원비, 보험료');
@@ -814,6 +859,10 @@ export default function App() {
         return {
           ...prev,
           expenseCategories: [...prev.expenseCategories, trimmed],
+          expenseDestinations: {
+            ...(prev.expenseDestinations || {}),
+            [trimmed]: prev.assetKeys[0] || '기본통장'
+          },
           expenses: nextExp
         };
       });
@@ -826,10 +875,16 @@ export default function App() {
       return;
     }
     if (window.confirm(`"${cat}" 지출 항목을 삭제하시겠습니까?`)) {
-      setState(prev => ({
-        ...prev,
-        expenseCategories: prev.expenseCategories.filter(c => c !== cat)
-      }));
+      setState(prev => {
+        const nextCats = prev.expenseCategories.filter(c => c !== cat);
+        const nextDests = { ...(prev.expenseDestinations || {}) };
+        delete nextDests[cat];
+        return {
+          ...prev,
+          expenseCategories: nextCats,
+          expenseDestinations: nextDests
+        };
+      });
     }
   };
 
@@ -1006,14 +1061,12 @@ export default function App() {
         <div className="panel-head">
           <div className="panel-head-left">
             <h2 className="panel-title asset-title">내 자산 (은행 / 계좌)</h2>
-            <span className="panel-subtitle">은행/자산별 기초 잔액 및 {state.activeMonth} 총 순자산을 한눈에 확인하세요</span>
+            <span className="panel-subtitle">은행/자산별 기초 잔액을 설정하고 확인하세요</span>
           </div>
           <button className="sub-btn asset-btn" type="button" onClick={handleAddAsset}>+ 자산/은행 추가</button>
         </div>
         <div className="asset-grid">
           {state.assetKeys.map(key => {
-            const incomeAdd = getAssetIncome(key, state.activeMonth);
-            const totalNetAsset = getAssetTotalValue(key, state.activeMonth);
             return (
               <div className="asset-card" key={key}>
                 <div className="asset-card-header">
@@ -1037,20 +1090,6 @@ export default function App() {
                     fieldData={state.assets[key] || field(0)}
                     onChange={(newVal) => handleAssetChange(key, newVal)}
                   />
-                </div>
-
-                <div className="asset-net-box">
-                  <div className="asset-net-head">
-                    <span className="net-label-title">총 순자산 ({state.activeMonth})</span>
-                    {incomeAdd > 0 && (
-                      <span className="dest-badge auto-badge">
-                        +{formatWon(incomeAdd)} 입금
-                      </span>
-                    )}
-                  </div>
-                  <div className="asset-net-val">
-                    {formatWonBig(totalNetAsset)}
-                  </div>
                 </div>
               </div>
             );
@@ -1170,7 +1209,7 @@ export default function App() {
         {/* Expense Ledger */}
         <div className="subsection-head" style={{ marginTop: '28px' }}>
           <h3 className="subsection-title expense-title">
-            💸 지출 내역
+            💸 지출 내역 <small className="sub-caption">(각 항목별 출금 은행 선택 가능)</small>
           </h3>
           <button className="sub-btn expense-sub-btn" type="button" onClick={handleAddExpenseCategory}>
             + 지출 항목 추가
@@ -1179,28 +1218,50 @@ export default function App() {
         <div className="ledger">
           <div className="ledger-head expense-ledger-head">
             <span className="col-item">지출 항목</span>
+            <span className="col-bank">출금 대상 은행</span>
             <span className="col-amount">금액</span>
             <span className="col-del">삭제</span>
           </div>
-          {state.expenseCategories.map(cat => (
-            <div className="ledger-row expense-ledger-row" key={cat}>
-              <div className="cat-label-wrap">
-                <span className="cat-label">{cat}</span>
+          {state.expenseCategories.map(cat => {
+            const currentDest = (state.expenseDestinations && state.expenseDestinations[cat]) || state.assetKeys[0] || '';
+            return (
+              <div className="ledger-row expense-ledger-row" key={cat}>
+                <div className="cat-label-wrap">
+                  <span className="cat-label">{cat}</span>
+                </div>
+
+                {/* 출금 대상 은행 드롭다운 */}
+                <div className="bank-select-wrap">
+                  <select
+                    className="bank-select"
+                    value={currentDest}
+                    onChange={(e) => handleExpenseDestinationChange(cat, e.target.value)}
+                    title={`${cat}의 출금 은행 선택`}
+                  >
+                    {state.assetKeys.map(assetKey => (
+                      <option key={assetKey} value={assetKey}>
+                        🏦 {assetKey}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <MoneyInput
+                  fieldData={state.expenses[state.activeMonth] ? state.expenses[state.activeMonth][cat] : field(0)}
+                  onChange={(newVal) => handleExpenseChange(cat, newVal)}
+                />
+
+                <button
+                  type="button"
+                  className="row-delete-btn"
+                  title={`${cat} 삭제`}
+                  onClick={() => handleDeleteExpenseCategory(cat)}
+                >
+                  &times;
+                </button>
               </div>
-              <MoneyInput
-                fieldData={state.expenses[state.activeMonth] ? state.expenses[state.activeMonth][cat] : field(0)}
-                onChange={(newVal) => handleExpenseChange(cat, newVal)}
-              />
-              <button
-                type="button"
-                className="row-delete-btn"
-                title={`${cat} 삭제`}
-                onClick={() => handleDeleteExpenseCategory(cat)}
-              >
-                &times;
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="hero-total">
           <h3 className="hero-label expense-text"><span>{state.activeMonth}</span> 총지출</h3>
@@ -1244,22 +1305,26 @@ export default function App() {
           </div>
         </div>
 
-        {/* 내 자산/은행별 자동 연동 잔액 카드 */}
-        <h3 className="subsection-title" style={{ marginTop: '16px', marginBottom: '10px' }}>
-          🏦 내 은행별 {state.activeMonth} 입금 연동 합계
+        {/* 내 자산/은행별 자동 연동 입출금 합계 카드 */}
+        <h3 className="subsection-title" style={{ marginTop: '20px', marginBottom: '10px' }}>
+          🏦 내 은행별 {state.activeMonth} 입출금 합계
         </h3>
         <div className="account-callouts">
           {state.assetKeys.map(key => {
+            const baseVal = state.assets[key] ? state.assets[key].value : 0;
             const inc = getAssetIncome(key, state.activeMonth);
-            const total = getAssetTotalValue(key, state.activeMonth);
+            const exp = getAssetExpense(key, state.activeMonth);
+            const netBankBalance = baseVal + inc - exp;
             return (
               <div className="account-callout custom-bank-callout" key={key}>
                 <span className="label">
-                  <strong>{key}</strong>
-                  <small>기초 자산 + 이번 달 입금 {formatWon(inc)}</small>
+                  <strong>🏦 {key}</strong>
+                  <small style={{ marginTop: '3px', display: 'block', fontSize: '11px', color: 'var(--ink-sub)', whiteSpace: 'nowrap' }}>
+                    기초자산 {formatWon(baseVal)} &nbsp;|&nbsp; 입금 <span style={{ color: '#10b981', fontWeight: 600 }}>+{formatWon(inc)}</span> &nbsp;|&nbsp; 출금 <span style={{ color: '#ef4444', fontWeight: 600 }}>&minus;{formatWon(exp)}</span>
+                  </small>
                 </span>
-                <span className="value accent">
-                  {formatWonBig(total)}
+                <span className="value accent" style={{ fontSize: '16px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {formatWonBig(netBankBalance)}
                 </span>
               </div>
             );

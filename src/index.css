@@ -452,7 +452,7 @@ body {
 
 .expense-ledger-head {
   display: grid;
-  grid-template-columns: 1fr 170px 36px;
+  grid-template-columns: minmax(110px, 1fr) 140px 170px 36px;
   gap: 12px;
 }
 
@@ -488,7 +488,7 @@ body {
 
 .expense-ledger-row {
   display: grid;
-  grid-template-columns: 1fr 170px 36px;
+  grid-template-columns: minmax(110px, 1fr) 140px 170px 36px;
 }
 
 .ledger-row:last-child {

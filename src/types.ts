@@ -9,6 +9,7 @@ export interface HouseholdState {
   incomeCategories: string[];
   incomeDestinations: Record<string, string>;
   expenseCategories: string[];
+  expenseDestinations?: Record<string, string>;
   expenses: Record<string, Record<string, FieldData>>;
   income: Record<string, Record<string, FieldData>>;
   activeMonth: string;

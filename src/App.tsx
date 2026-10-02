@@ -647,8 +647,9 @@ export default function App() {
     state.assetKeys.forEach(k => {
       sum += getAssetTotalValue(k, state.activeMonth);
     });
-    return sum;
-  }, [state.assetKeys, state.activeMonth, getAssetTotalValue]);
+    const exp = monthExpenseSum(state.activeMonth);
+    return sum - exp;
+  }, [state.assetKeys, state.activeMonth, getAssetTotalValue, monthExpenseSum]);
 
   const baseTotalAssets = useMemo(() => {
     let sum = 0;
@@ -977,26 +978,26 @@ export default function App() {
           <span className="brand-mark">▤</span>
           <div>
             <h1>리액트 가계부</h1>
-            <div className="user-badge">
+            <div className="user-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
               <span className="user-icon">👤</span>
-              <strong className="user-name">{currentUser.name}</strong>
-              <span className="user-birth">({currentUser.birthDate})</span>
-              <span className="db-sync-badge" title="IndexedDB + SQLite db.py 이중 데이터베이스 자동 저장 중" style={{ marginLeft: '8px', fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>💾 DB 자동 영구 저장 중</span>
+              <strong className="user-name" style={{ whiteSpace: 'nowrap' }}>{currentUser.name}</strong>
+              <span className="user-birth" style={{ whiteSpace: 'nowrap' }}>({currentUser.birthDate})</span>
+              <span className="db-sync-badge" title="IndexedDB + SQLite db.py 이중 데이터베이스 자동 저장 중" style={{ marginLeft: '6px', fontSize: '11px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '3px 8px', borderRadius: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}>💾 DB 자동 영구 저장 중</span>
             </div>
           </div>
         </div>
-        <div className="header-actions">
-          <button className="text-btn save-db-btn" onClick={handleManualSave} type="button" style={{ background: '#10b981', color: '#ffffff', fontWeight: 700, padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px', boxShadow: '0 2px 8px rgba(16,185,129,0.3)' }}>
+        <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button className="text-btn save-db-btn" onClick={handleManualSave} type="button" style={{ background: '#10b981', color: '#ffffff', fontWeight: 700, padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', whiteSpace: 'nowrap', flexShrink: 0, boxShadow: '0 2px 8px rgba(16,185,129,0.3)' }}>
             💾 가계부 DB에 저장하기
           </button>
-          {saveStatusMsg && <span className="save-status-toast" style={{ color: '#10b981', fontWeight: 700, fontSize: '13px', marginLeft: '4px' }}>{saveStatusMsg}</span>}
-          <button className="icon-btn" onClick={toggleTheme} aria-label="테마 전환" title="테마 전환">
+          {saveStatusMsg && <span className="save-status-toast" style={{ color: '#10b981', fontWeight: 700, fontSize: '13px', marginLeft: '4px', whiteSpace: 'nowrap' }}>{saveStatusMsg}</span>}
+          <button className="icon-btn" onClick={toggleTheme} aria-label="테마 전환" title="테마 전환" style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
             {theme === 'dark' ? '☀' : '🌙'}
           </button>
-          <button className="text-btn switch-user-btn" onClick={handleLogout} title="다른 사용자로 로그인">
+          <button className="text-btn switch-user-btn" onClick={handleLogout} title="다른 사용자로 로그인" style={{ flexShrink: 0, whiteSpace: 'nowrap', padding: '8px 12px' }}>
             사용자 전환 / 로그아웃
           </button>
-          <button className="text-btn danger-btn" onClick={handleReset}>초기화</button>
+          <button className="text-btn danger-btn" onClick={handleReset} style={{ flexShrink: 0, whiteSpace: 'nowrap', padding: '8px 12px' }}>초기화</button>
         </div>
       </header>
 
@@ -1055,9 +1056,14 @@ export default function App() {
             );
           })}
         </div>
-        <div className="hero-total">
-          <h3 className="hero-label asset-text">총 자산 (기본 자산 + {state.activeMonth} 입금)</h3>
-          <span className="hero-value asset-accent">{formatWonBig(totalAssets)}</span>
+        <div className="hero-total" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h3 className="hero-label asset-text">총 자산 (기초 자산 + {state.activeMonth} 수입 - {state.activeMonth} 지출)</h3>
+            <div style={{ fontSize: '12px', color: 'var(--ink-sub)', marginTop: '2px', whiteSpace: 'nowrap' }}>
+              기초 자산 {formatWon(baseTotalAssets)} + 수입 {formatWon(monthIncomeSum(state.activeMonth))} &minus; 지출 {formatWon(monthExpenseSum(state.activeMonth))}
+            </div>
+          </div>
+          <span className="hero-value asset-accent" style={{ whiteSpace: 'nowrap' }}>{formatWonBig(totalAssets)}</span>
         </div>
       </section>
 
@@ -1207,8 +1213,20 @@ export default function App() {
         <h2 className="panel-title">요약 & 은행별 현황</h2>
         <div className="summary-grid">
           <div className="summary-row">
-            <span>총 자산 ({state.activeMonth} 기준)</span>
-            <span className="positive">{formatWonBig(totalAssets)}</span>
+            <span>기초 자산 합계</span>
+            <span>{formatWonBig(baseTotalAssets)}</span>
+          </div>
+          <div className="summary-row">
+            <span>{state.activeMonth} 총 수입</span>
+            <span className="positive">+{formatWonBig(monthIncomeSum(state.activeMonth))}</span>
+          </div>
+          <div className="summary-row">
+            <span>{state.activeMonth} 총 지출</span>
+            <span className="negative">&minus;{formatWonBig(monthExpenseSum(state.activeMonth))}</span>
+          </div>
+          <div className="summary-row summary-row-main" style={{ background: 'var(--surface-alt)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--accent-soft)', margin: '4px 0 10px' }}>
+            <span style={{ fontWeight: 700 }}>{state.activeMonth} 실질 총자산 (기초자산 + 수입 &minus; 지출)</span>
+            <span className="positive" style={{ fontSize: '18px', fontWeight: 800 }}>{formatWonBig(totalAssets)}</span>
           </div>
           <div className="summary-row">
             <span>전체 수입 (10월–3월 누적)</span>
@@ -1219,7 +1237,7 @@ export default function App() {
             <span className="negative">{formatWonBig(totalExpenseAllMonths)}</span>
           </div>
           <div className="summary-row summary-row-main">
-            <span>남은 순자산</span>
+            <span>최종 잔여 순자산 (기초자산 + 누적수입 &minus; 누적지출)</span>
             <span className={remainingMoney >= 0 ? 'positive' : 'negative'}>
               {formatWonBig(remainingMoney)}
             </span>
